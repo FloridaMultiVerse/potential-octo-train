@@ -1,0 +1,12 @@
+We need to pick how the lattice stores state cells.
+
+Quick contenders:
+- Sparse Voxel Octree
+- Spatial Merkle Tree (coord → path)
+- Hybrid / other
+
+Goals: fast point lookup, range queries, small proofs, sparse-friendly.
+
+Thoughts? Links? Which way?
+
+Let's decide before we write real code.
