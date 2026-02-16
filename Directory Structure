@@ -1,0 +1,21 @@
+lvm-core/
+├── Cargo.toml
+├── README.md
+├── LICENSE
+├── /docs
+│   └── rfc-0001-spatial-consensus.md
+├── /crates
+│   ├── lvm-spec
+│   │   └── Cargo.toml
+│   ├── lvm-state
+│   │   └── Cargo.toml
+│   ├── lvm-consensus
+│   │   └── Cargo.toml
+│   ├── lvm-p2p
+│   │   └── Cargo.toml
+│   └── lvm-vm
+│       └── Cargo.toml
+├── /examples
+│   └── simple-grid
+│       └── main.rs
+└── /proto
