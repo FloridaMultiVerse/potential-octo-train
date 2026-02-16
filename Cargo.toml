@@ -1,0 +1,27 @@
+[package]
+name = "lvm-core"
+version = "0.1.0"
+edition = "2021"
+description = "Spatially-localized consensus for distributed truth in virtual environments"
+authors = ["Your Name <you@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/lvm-core"
+readme = "README.md"
+keywords = ["blockchain", "spatial", "consensus", "distributed-systems", "metaverse"]
+categories = ["network-programming", "data-structures", "simulation"]
+
+[dependencies]
+# Core crates we'll likely need soon
+serde = { version = "1.0", features = ["derive"] }          # For serialization of spatial data
+thiserror = "1.0"                                           # Nice error handling
+log = "0.4"                                                 # Logging
+env_logger = "0.11"                                         # For bin/main
+
+# Spatial/math (add more as needed: nalgebra, rapier for physics sim later?)
+nalgebra = "0.33"                                           # Vectors, matrices for 3D coords
+
+# Future: for networking/consensus experiments
+# tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+approx = "0.5"                                              # For floating-point assertions in tests
