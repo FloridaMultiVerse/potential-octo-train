@@ -1,0 +1,21 @@
+Kicking off discussion on the storage backbone (post-RFC-0001).
+
+Right now we know we want:
+- Immutable cells at fixed 3D coords
+- Fast local reads for nodes in their k-hop bubble
+- Provable state (Merkle-ish)
+
+But *how* do we index / persist that data efficiently at scale?
+
+Quick poll / brain dump welcome:
+- Octree family (sparse voxel octree, loose octree, …)?
+- Space-filling curve (Morton/Hilbert) → sorted keys + Merkle tree?
+- Chunk/grid + per-chunk Merkle root (à la Minecraft + Ethereum trie)?
+- Pure spatial hashmap with coordinate hashing?
+- Something else entirely?
+
+Pros/cons, crate recommendations, war stories, or napkin sketches all appreciated.
+
+Once we have rough consensus, we'll formalize as RFC-0002 and start coding a prototype.
+
+Fire away!
