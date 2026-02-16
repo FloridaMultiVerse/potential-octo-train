@@ -1,0 +1,47 @@
+## RFC-0002: Lattice Storage Model
+
+**Status:** Draft / Seeking Input  
+**Author:** @FloridaMultiVerse (or your handle)  
+**Related:** RFC-0001 (Spatial Consensus)
+
+We need a fast, provable way to store and query immutable state at deterministic 3D coordinates `(x: i64, y: i64, z: i64)`.
+
+Core requirements for the storage layer (Layer 1 – State Lattice):
+- Near O(1) or O(log n) point lookup / update by coordinate
+- Efficient range queries (e.g., fetch all cells in a k×k×k cube around a node)
+- Merkle-proof friendly (so nodes can verify state without full data)
+- Disk / memory efficient for sparse worlds (most space is empty)
+- Supports incremental updates without rewriting huge structures
+
+### Leading Options
+1. **Sparse Voxel Octree (SVO)**  
+   - Great for sparse 3D data (used in voxel engines like MagicaVoxel, Teardown)  
+   - O(log n) point queries, natural LOD, compression-friendly  
+   - But: merging/proving subtrees can be tricky for consensus proofs
+
+2. **Spatial Merkle Tree / Geometric Merkle Patricia Trie**  
+   - Coordinate → path in tree (e.g., Morton/Z-order curve → key)  
+   - Native Merkle proofs, perfect for distributed verification  
+   - But: potentially worse constant factors, more complex to implement
+
+3. **Custom Hybrid** (e.g., Octree buckets + flat hashmap for hot regions + Merkle on top)  
+   - Octree for coarse navigation, hashmap for leaf-level fast access  
+   - Trade simplicity for performance
+
+4. **Other wildcards?**  
+   - 3D Hilbert curve + flat sorted vec + binary search  
+   - Chunk-based like Minecraft regions, but with Merkle roots per chunk  
+   - Something leveraging Rust crates (e.g. `slotmap`, `octree`, `kdtree`, or even `bevy_ecs` spatial queries as inspiration)
+
+### Questions for the group
+- Which approach best balances lookup speed, proof size, and implementation complexity?
+- Any crates we should evaluate early (e.g. `nalgebra` for coords, `merkletree` variants)?
+- Should we prioritize disk persistence from day 1, or start in-memory?
+- What's the minimal prototype we can build to benchmark these?
+
+Drop thoughts, links to papers/crates, horror stories from similar systems, or +1/-1 on the options.  
+Goal: converge on a direction within ~2 weeks so we can start stubbing the lattice module.
+
+cc: anyone with spatial DB, voxel engine, or blockchain storage experience — your input is gold here.
+
+Let's make the lattice solid.
