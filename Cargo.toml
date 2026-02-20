@@ -25,3 +25,8 @@ nalgebra = "0.33"                                           # Vectors, matrices 
 
 [dev-dependencies]
 approx = "0.5"                                              # For floating-point assertions in tests
+
+[dependencies]
+nalgebra = "0.33"
+sha2 = "0.10"          # For Merkle hashing
+# wasmtime = "..."     # Uncomment for real WASM (heavy for mobile proto)
