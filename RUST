@@ -1,0 +1,181 @@
+use std::collections::HashMap;
+use std::io::{self, BufRead};
+use nalgebra::{Vector4, Vector3};
+use sha2::{Sha256, Digest};
+
+// --- 24-Color Lookup Table ---
+// Each color has: name, 5-bit pointer (as u8 for simplicity), direction delta (i8 steps)
+struct ColorDir {
+    name: &'static str,
+    bit_code: u8,          // 5 bits: 0-31 possible, we use 24
+    delta: (i8, i8, i8),
+}
+
+const COLOR_TABLE: [ColorDir; 24] = [
+    ColorDir { name: "Deep_Purple",    bit_code: 0b01011, delta: ( 1, 1, 0) },  // XY+
+    ColorDir { name: "Burnt_Orange",   bit_code: 0b11001, delta: ( 0, 0,-1) },  // Z-
+    ColorDir { name: "Pale_Vermillion",bit_code: 0b10110, delta: ( 1, 0, 1) },  // ZX+
+    ColorDir { name: "Indigo",         bit_code: 0b01101, delta: ( 0, 1, 1) },  // YZ+
+    ColorDir { name: "Crimson",        bit_code: 0b11100, delta: (-1,-1, 0) },  // XY-
+    ColorDir { name: "Amber",          bit_code: 0b00110, delta: ( 0, 1,-1) },  // YZ example
+    ColorDir { name: "Teal",           bit_code: 0b10010, delta: (-1, 0, 1) },
+    ColorDir { name: "Magenta",        bit_code: 0b11010, delta: ( 1,-1, 0) },
+    ColorDir { name: "Lime",           bit_code: 0b01001, delta: ( 1, 1,-1) },
+    ColorDir { name: "Cyan",           bit_code: 0b10101, delta: (-1, 1, 1) },
+    ColorDir { name: "Scarlet",        bit_code: 0b11101, delta: ( 1, 0,-1) },
+    ColorDir { name: "Violet",         bit_code: 0b01110, delta: ( 0,-1, 1) },
+    ColorDir { name: "Gold",           bit_code: 0b00011, delta: ( 1, 1, 1) },
+    ColorDir { name: "Emerald",        bit_code: 0b10001, delta: (-1,-1,-1) },
+    ColorDir { name: "Sapphire",       bit_code: 0b11000, delta: ( 0, 0, 1) },
+    ColorDir { name: "Ruby",           bit_code: 0b00101, delta: ( 1,-1,-1) },
+    ColorDir { name: "Azure",          bit_code: 0b10111, delta: (-1, 1,-1) },
+    ColorDir { name: "Ochre",          bit_code: 0b01010, delta: ( 1,-1, 1) },
+    ColorDir { name: "Jade",           bit_code: 0b11110, delta: (-1, 0,-1) },
+    ColorDir { name: "Lavender",       bit_code: 0b01111, delta: ( 0,-1,-1) },
+    ColorDir { name: "Coral",          bit_code: 0b00001, delta: ( 1, 0, 0) },
+    ColorDir { name: "Turquoise",      bit_code: 0b10000, delta: ( 0, 1, 0) },
+    ColorDir { name: "Silver",         bit_code: 0b11011, delta: ( 0, 0, 0) }, // Neutral / anchor
+    ColorDir { name: "Obsidian",       bit_code: 0b00111, delta: (-1,-1, 1) },
+];
+
+// Mock face color lookup (real: based on lattice state or external "light map")
+fn get_face_color_at(pos: Coord) -> &'static str {
+    let idx = ((pos.0.abs() as usize + pos.1.abs() as usize + pos.2.abs() as usize) * 7) % 24;
+    COLOR_TABLE[idx].name
+}
+
+fn get_direction_from_color(color_name: &str) -> (i8, i8, i8) {
+    COLOR_TABLE.iter().find(|c| c.name == color_name)
+        .map(|c| c.delta)
+        .unwrap_or((1, 0, 0))
+}
+
+// --- Coord & Grid ---
+type Coord = (i8, i8, i8);
+
+struct ChromaticGrid {
+    cells: HashMap<Coord, u32>,           // pos -> symbol payload
+    path_hashes: Vec<Vec<u8>>,           // For simple path Merkle (per journey)
+}
+
+impl ChromaticGrid {
+    fn new() -> Self { ChromaticGrid { cells: HashMap::new(), path_hashes: vec![] } }
+
+    fn activate(&mut self, pos: Coord, payload: u32, step_hash: Vec<u8>) {
+        self.cells.insert(pos, payload);
+        self.path_hashes.push(step_hash);  // Accumulate for Merkle
+        println!("Activated {:?} | payload 0x{:08x}", pos, payload);
+    }
+
+    // Simple Merkle root over path (concat hashes → hash)
+    fn compute_merkle_root(&self) -> Vec<u8> {
+        if self.path_hashes.is_empty() { return vec![]; }
+        let mut hasher = Sha256::new();
+        for h in &self.path_hashes {
+            hasher.update(h);
+        }
+        hasher.finalize().to_vec()
+    }
+}
+
+// --- Symbol Encoding ---
+fn encode_symbol(c: char) -> u32 {
+    (c as u32).wrapping_mul(0x9E3779B9)
+}
+
+// --- WASM Hook Stub ---
+// In real: load .wasm module, call func with payload & pos
+fn apply_spatial_function_wasm_stub(pos: Coord, payload: u32) {
+    // Placeholder: could invoke wasmtime here
+    println!("  WASM hook: Apply symbolic function at {:?} | payload 0x{:08x}", pos, payload);
+    // E.g.: finalize render, gravity, anchor, etc. based on symbol type
+}
+
+// --- Tesseract 4D → 3D Projection ---
+fn project_4d_to_3d(point_4d: Vector4<f32>, eye_w: f32) -> Vector3<f32> {
+    // Simple perspective projection: divide by (w - eye_w)
+    let denom = point_4d.w - eye_w;
+    if denom.abs() < 1e-6 { return Vector3::zeros(); }
+    let scale = 1.0 / denom;
+    Vector3::new(
+        point_4d.x * scale,
+        point_4d.y * scale,
+        point_4d.z * scale,
+    )
+}
+
+// --- Core Journey with All Features ---
+fn execute_spatial_journey(grid: &mut ChromaticGrid, symbol: char, start_pos: Coord, start_color: &str) {
+    let mut pos = start_pos;
+    let mut dir = get_direction_from_color(start_color);
+    let payload = encode_symbol(symbol);
+    let mut step = 0;
+    const MAX_STEPS: usize = 200;
+
+    let mut hasher = Sha256::new();
+    hasher.update(format!("start:{:?}:{:08x}", start_pos, payload).as_bytes());
+    let mut prev_hash = hasher.finalize().to_vec();
+
+    println!("Journey: '{}' | start {:?} | color {} | dir {:?}", symbol, start_pos, start_color, dir);
+
+    while step < MAX_STEPS {
+        // Tesseract fold example: map current pos to 4D, project back (demo rotation in w)
+        let point_4d = Vector4::new(pos.0 as f32, pos.1 as f32, pos.2 as f32, (step as f32).sin() * 2.0);
+        let projected = project_4d_to_3d(point_4d, 5.0);  // eye at w=5
+        println!("  4D proj at step {}: {:?}", step, projected);
+
+        // Activate + WASM hook
+        let mut step_hasher = Sha256::new();
+        step_hasher.update(&prev_hash);
+        step_hasher.update(format!("{:?}:{:08x}", pos, payload).as_bytes());
+        let step_hash = step_hasher.finalize().to_vec();
+
+        if !grid.cells.contains_key(&pos) {
+            grid.activate(pos, payload, step_hash.clone());
+        }
+        apply_spatial_function_wasm_stub(pos, payload);
+
+        // Merkle step chain
+        prev_hash = step_hash;
+
+        // Exit?
+        if pos.0.abs() > 4 || pos.1.abs() > 4 || pos.2.abs() > 4 {
+            println!("Exited boundary at {:?}", pos);
+            break;
+        }
+
+        // Move + junction update
+        pos = (pos.0 + dir.0, pos.1 + dir.1, pos.2 + dir.2);
+        let new_color = get_face_color_at(pos);
+        dir = get_direction_from_color(new_color);
+
+        step += 1;
+    }
+
+    let root = grid.compute_merkle_root();
+    println!("Merkle root for path: {:02x?} | Active voxels: {}", root, grid.cells.len());
+}
+
+fn main() {
+    let mut grid = ChromaticGrid::new();
+
+    // Demo runs from your table + extras
+    execute_spatial_journey(&mut grid, 'Ω', (0,0,0), "Indigo");
+    execute_spatial_journey(&mut grid, 'あ', (-2,1,3), "Amber");
+    execute_spatial_journey(&mut grid, 'א', (4,-4,0), "Crimson");
+
+    // Interactive
+    println!("\nEnter: symbol start_x y z color_name (or 'q')");
+    let stdin = io::stdin();
+    for line in stdin.lines().flatten() {
+        if line.trim() == "q" { break; }
+        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+        if parts.len() < 5 { continue; }
+        let symbol = parts[0].chars().next().unwrap_or('?');
+        let x: i8 = parts[1].parse().unwrap_or(0);
+        let y: i8 = parts[2].parse().unwrap_or(0);
+        let z: i8 = parts[3].parse().unwrap_or(0);
+        let color = parts[4..].join(" ");
+        execute_spatial_journey(&mut grid, symbol, (x,y,z), &color);
+    }
+}
