@@ -1,0 +1,156 @@
+use std::collections::HashMap;
+use std::io::{self, BufRead};
+
+// Simple 3D coord (centered at (0,0,0), range -4..=4 for 9×9×9)
+type Coord = (i8, i8, i8);
+
+// Delta vectors for movement (one step along axes/planes/diagonals)
+// In a real impl, derive these from your 24 color → 5-bit pointer mapping
+// Here: simplified to 6 cardinal + some diagonals for demo
+const DIRECTIONS: &[(i8, i8, i8)] = &[
+    (1, 0, 0), (-1, 0, 0),  // X axis (Red blends)
+    (0, 1, 0), (0, -1, 0),  // Y axis (Blue)
+    (0, 0, 1), (0, 0, -1),  // Z axis (Orange)
+    (1, 1, 0), (-1, -1, 0), // XY plane examples
+    (1, 0, 1), (-1, 0, -1), // XZ
+    (0, 1, 1), (0, -1, -1), // YZ
+    // ... expand to 24+ variants with your exact 5-bit logic
+];
+
+// Mock color → direction mapping (expand this!)
+fn get_direction_from_color(color: &str) -> (i8, i8, i8) {
+    match color {
+        "Deep_Purple" => (1, 1, 0),     // XY +
+        "Burnt_Orange" => (0, 0, -1),   // Z -
+        "Pale_Vermillion" => (1, 0, 1), // ZX +
+        "Indigo" => (0, 1, 1),          // YZ example
+        // Add your full 24...
+        _ => (1, 0, 0),                 // fallback
+    }
+}
+
+// Mock face color at a position (in real: query the grid's "face" color or external light map)
+fn get_face_color_at(_pos: Coord) -> String {
+    // For demo: cycle through colors based on position hash
+    let colors = ["Deep_Purple", "Burnt_Orange", "Pale_Vermillion", "Indigo"];
+    let idx = (_pos.0.abs() as usize + _pos.1.abs() as usize + _pos.2.abs() as usize) % colors.len();
+    colors[idx].to_string()
+}
+
+// The sparse grid: only active (symbol-containing) voxels exist
+struct ChromaticGrid {
+    cells: HashMap<Coord, u32>,  // coord -> symbol payload (binary value)
+}
+
+impl ChromaticGrid {
+    fn new() -> Self {
+        ChromaticGrid { cells: HashMap::new() }
+    }
+
+    fn is_active(&self, pos: Coord) -> bool {
+        self.cells.contains_key(&pos)
+    }
+
+    fn activate(&mut self, pos: Coord, payload: u32) {
+        self.cells.insert(pos, payload);
+        println!("Activated voxel at {:?} with payload 0x{:08x}", pos, payload);
+    }
+
+    fn deactivate(&mut self, pos: Coord) {
+        if self.cells.remove(&pos).is_some() {
+            println!("Deactivated voxel at {:?}", pos);
+        }
+    }
+
+    fn get_payload(&self, pos: Coord) -> Option<u32> {
+        self.cells.get(&pos).copied()
+    }
+}
+
+// Symbolic payload from char (mock: just hash to u32; real: UTF-8 bytes → int)
+fn encode_symbol(c: char) -> u32 {
+    // Real version: interpret as big-endian bytes or Unicode codepoint
+    (c as u32).wrapping_mul(0x9E3779B9)  // golden ratio hash for mixing
+}
+
+// Core execution: drop symbol at start pos with initial color direction
+fn execute_spatial_journey(grid: &mut ChromaticGrid, symbol: char, start_pos: Coord, start_color: &str) {
+    let mut current_pos = start_pos;
+    let mut current_dir = get_direction_from_color(start_color);
+    let payload = encode_symbol(symbol);
+
+    println!("Starting journey: symbol '{}', payload 0x{:08x}, start {:?}, dir {:?}", symbol, payload, start_pos, current_dir);
+
+    let mut steps = 0;
+    const MAX_STEPS: usize = 100;  // prevent infinite loops in demo
+
+    while steps < MAX_STEPS {
+        // Activate current voxel if not already
+        if !grid.is_active(current_pos) {
+            grid.activate(current_pos, payload);
+        }
+
+        // Apply function at this voxel (mock: just print)
+        println!("  Step {}: at {:?} → apply function with payload 0x{:08x}", steps, current_pos, payload);
+
+        // Check exit condition (e.g., reached boundary vertex)
+        if current_pos.0.abs() > 4 || current_pos.1.abs() > 4 || current_pos.2.abs() > 4 {
+            println!("Exited at boundary: {:?}", current_pos);
+            grid.deactivate(current_pos);  // optional: clean up exit
+            break;
+        }
+
+        // Move to next voxel
+        let next_pos = (
+            current_pos.0 + current_dir.0,
+            current_pos.1 + current_dir.1,
+            current_pos.2 + current_dir.2,
+        );
+
+        // At junction: update direction based on new face color
+        let new_color = get_face_color_at(next_pos);
+        current_dir = get_direction_from_color(&new_color);
+
+        current_pos = next_pos;
+        steps += 1;
+    }
+
+    if steps >= MAX_STEPS {
+        println!("Warning: max steps reached — possible loop?");
+    }
+}
+
+fn main() {
+    let mut grid = ChromaticGrid::new();
+
+    // Example journeys from your table
+    let examples = vec![
+        ('Ω', (0, 0, 0), "Indigo"),         // Finalize Neighborhood Render
+        ('あ', (-2, 1, 3), "Amber"),        // Initialize Physics Gravity (add to map!)
+        ('א', (4, -4, 0), "Crimson"),       // Anchor to Surface
+    ];
+
+    for (symbol, start, color) in examples {
+        execute_spatial_journey(&mut grid, symbol, start, color);
+        println!("--- Grid now has {} active voxels ---\n", grid.cells.len());
+    }
+
+    // Interactive mode for testing
+    println!("Enter symbol char, start x y z, start_color (or 'q' to quit):");
+    let stdin = io::stdin();
+    for line in stdin.lines().flatten() {
+        if line.trim() == "q" { break; }
+        // Parse input... (simple split for demo)
+        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+        if parts.len() < 5 { continue; }
+
+        let symbol = parts[0].chars().next().unwrap_or('?');
+        let x: i8 = parts[1].parse().unwrap_or(0);
+        let y: i8 = parts[2].parse().unwrap_or(0);
+        let z: i8 = parts[3].parse().unwrap_or(0);
+        let color = parts[4..].join(" ");
+
+        execute_spatial_journey(&mut grid, symbol, (x, y, z), &color);
+        println!("Active voxels: {}\n", grid.cells.len());
+    }
+}
